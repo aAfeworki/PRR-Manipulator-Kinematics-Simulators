@@ -13,17 +13,19 @@ It includes both forward and inverse kinematics tools designed for learning, vis
 - Forward Kinematics (Slider-Controlled)
   Adjust the prismatic displacement and joint angles using sliders to visualize the manipulator configuration.
 
-
+![image alt](https://github.com/aAfeworki/PRR-Manipulator-Kinematics-Simulators/blob/main/FK_Simulator_for_PRR_manipulator_with_Slider.png?raw=true)
 
 - Forward Kinematics (IK-Driven) 
   Use joint angles and link length generated from the inverse kinematics solver to control the manipulator.
 
-
+![image alt](https://github.com/aAfeworki/PRR-Manipulator-Kinematics-Simulators/blob/main/FK_Simulator_for_PRR_Industrial_Robot.png?raw=true)
 
 - Inverse Kinematics Simulator 
   Enter the equation of a curve on the User Interface to generate joint angles that position the manipulator’s end-effector.
 
+![image alt](https://github.com/aAfeworki/PRR-Manipulator-Kinematics-Simulators/blob/main/IK_Generator_for_PRR_manipulator_with_Simulator.png?raw=true)
 
+![image alt](https://github.com/aAfeworki/PRR-Manipulator-Kinematics-Simulators/blob/main/IK_Generator_for_PRR_manipulator_with_Simulator%20User%20Interface.png?raw=true)
 
 📂 Project Structure
 
