@@ -1,0 +1,163 @@
+import numpy as np
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from mpl_toolkits.mplot3d import Axes3D
+
+# ====== Robot parameters ======
+L1 = 5.0   # length of first link
+L2 = 3.0   # length of second link
+
+# ====== Inverse Kinematics for PRR robot ======
+def ik(x, y, z):
+    """Solve IK for PRR: prismatic along Z, RR in XY plane"""
+    R = np.hypot(x, y)
+    if R > (L1 + L2) or R < abs(L1 - L2):
+        raise ValueError("Target point unreachable in XY plane")
+
+    c2 = (R**2 - L1**2 - L2**2) / (2 * L1 * L2)
+    c2 = np.clip(c2, -1.0, 1.0)   # numerical safety
+
+    # Two solutions
+    theta2a = np.arccos(c2)   # elbow-up
+    theta2b = -np.arccos(c2)  # elbow-down
+
+    beta = np.arctan2(y, x)
+
+    def theta1(theta2):
+        phi = np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
+        return beta - phi
+
+    d = z  # prismatic displacement along Z
+    return [(d, theta1(theta2a), theta2a), (d, theta1(theta2b), theta2b)]
+
+# ====== Run IK and Save Output ======
+def run_ik():
+    try:
+        x_expr = x_entry.get()
+        y_expr = y_entry.get()
+        z_expr = z_entry.get()
+        t_end = float(t_entry.get())
+        steps = int(steps_entry.get())
+
+        t = np.linspace(0, t_end, steps)
+
+        x_vals = [eval(x_expr, {"t": val, "np": np}) for val in t]
+        y_vals = [eval(y_expr, {"t": val, "np": np}) for val in t]
+        z_vals = [eval(z_expr, {"t": val, "np": np}) for val in t]
+
+        ds, theta1s, theta2s = [], [], []
+        for x, y, z in zip(x_vals, y_vals, z_vals):
+            sols = ik(x, y, z)
+            if elbow_var.get() == 0:   # Elbow Up
+                d, th1, th2 = sols[0]
+            else:                      # Elbow Down
+                d, th1, th2 = sols[1]
+            ds.append(d)
+            theta1s.append(th1)
+            theta2s.append(th2)
+
+        data = {"time": t, "d": ds, "theta1": theta1s, "theta2": theta2s}
+        df = pd.DataFrame(data)
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv",
+                                                 filetypes=[("CSV files", "*.csv")])
+        if file_path:
+            df.to_csv(file_path, index=False)
+            messagebox.showinfo("Success", f"File saved as {file_path}")
+
+        simulate(x_vals, y_vals, z_vals, ds, theta1s, theta2s)
+
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+# ====== Simulator (3D Animation) ======
+def simulate(x_vals, y_vals, z_vals, ds, theta1s, theta2s):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim(min(x_vals) - 2, max(x_vals) + 2)
+    ax.set_ylim(min(y_vals) - 2, max(y_vals) + 2)
+    ax.set_zlim(min(z_vals) - 2, max(z_vals) + 2)
+    ax.set_title("PRR Robot Simulator")
+
+    line, = ax.plot([], [], [], 'o-', lw=3, color="blue")
+    trace, = ax.plot([], [], [], 'r--', lw=1)
+
+    x_history, y_history, z_history = [], [], []
+
+    def update(i):
+        d, th1, th2 = ds[i], theta1s[i], theta2s[i]
+
+        # Base (0,0,0) → after prismatic joint
+        x0, y0, z0 = 0, 0, 0
+        x_base, y_base, z_base = 0, 0, d
+
+        # Joint 1
+        x1 = x_base + L1 * np.cos(th1)
+        y1 = y_base + L1 * np.sin(th1)
+        z1 = z_base
+
+        # Joint 2 (end effector)
+        x2 = x1 + L2 * np.cos(th1 + th2)
+        y2 = y1 + L2 * np.sin(th1 + th2)
+        z2 = z1
+
+        line.set_data([x0, x_base, x1, x2],
+                      [y0, y_base, y1, y2])
+        line.set_3d_properties([z0, z_base, z1, z2])
+
+        # Trace path
+        x_history.append(x2)
+        y_history.append(y2)
+        z_history.append(z2)
+        trace.set_data(x_history, y_history)
+        trace.set_3d_properties(z_history)
+
+        return line, trace
+
+    ani = animation.FuncAnimation(fig, update, frames=len(x_vals),
+                                  interval=100, blit=False, repeat=False)
+
+    plt.show()
+
+# ====== GUI Setup ======
+root = tk.Tk()
+root.title("PRR Robot - IK Generator & Simulator")
+
+tk.Label(root, text="x(t) function:").grid(row=0, column=0, sticky="w")
+x_entry = tk.Entry(root, width=40)
+x_entry.insert(0, "6*np.cos(t)")  # default example
+x_entry.grid(row=0, column=1)
+
+tk.Label(root, text="y(t) function:").grid(row=1, column=0, sticky="w")
+y_entry = tk.Entry(root, width=40)
+y_entry.insert(0, "6*np.sin(t)")  # default example
+y_entry.grid(row=1, column=1)
+
+tk.Label(root, text="z(t) function:").grid(row=2, column=0, sticky="w")
+z_entry = tk.Entry(root, width=40)
+z_entry.insert(0, "2+0.5*np.sin(2*t)")  # default example
+z_entry.grid(row=2, column=1)
+
+tk.Label(root, text="Simulation time (t_end):").grid(row=3, column=0, sticky="w")
+t_entry = tk.Entry(root, width=20)
+t_entry.insert(0, "6.28")  # 2π
+t_entry.grid(row=3, column=1, sticky="w")
+
+tk.Label(root, text="Steps:").grid(row=4, column=0, sticky="w")
+steps_entry = tk.Entry(root, width=20)
+steps_entry.insert(0, "200")
+steps_entry.grid(row=4, column=1, sticky="w")
+
+# Checkbox for elbow-up/down selection
+elbow_var = tk.IntVar(value=0)
+elbow_check = tk.Checkbutton(root, text="Elbow Down Solution", variable=elbow_var)
+elbow_check.grid(row=5, column=0, columnspan=2, pady=5)
+
+# Run button
+run_button = tk.Button(root, text="Generate IK + Simulate", command=run_ik)
+run_button.grid(row=6, column=0, columnspan=2, pady=10)
+
+root.mainloop()

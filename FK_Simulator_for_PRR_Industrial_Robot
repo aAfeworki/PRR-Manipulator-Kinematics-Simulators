@@ -1,0 +1,182 @@
+import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")  # embed matplotlib in Tkinter
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.animation as animation
+from mpl_toolkits.mplot3d import Axes3D
+import tkinter as tk
+from tkinter import scrolledtext, messagebox
+
+# ====== Robot Parameters ======
+L1, L2 = 5, 3   # fixed link lengths
+
+# ====== Forward Kinematics for PRR ======
+def fk(z, theta1, theta2):
+    # Base prismatic: from (0,0,0) up to (0,0,z)
+    base_top = (0.0, 0.0, z)
+    # First revolute link in XY plane
+    x1 = base_top[0] + L1 * np.cos(theta1)
+    y1 = base_top[1] + L1 * np.sin(theta1)
+    z1 = base_top[2]
+    # Second revolute link in XY plane
+    x2 = x1 + L2 * np.cos(theta1 + theta2)
+    y2 = y1 + L2 * np.sin(theta1 + theta2)
+    z2 = z1
+    return (0.0, 0.0, 0.0), base_top, (x1, y1, z1), (x2, y2, z2)  
+
+# ====== Globals ======
+ani = None
+is_paused = False
+frame_index = 0
+times, zs, theta1s, theta2s = [], [], [], []
+x_history, y_history, z_history = [], [], []
+
+# ====== Animate function ======
+def animate(i):
+    global frame_index
+
+    if is_paused or frame_index >= len(theta1s):
+        return link_line, prism_line, trace, end_eff_text
+
+    z = zs[frame_index]
+    th1 = theta1s[frame_index]
+    th2 = theta2s[frame_index]
+    (x_base, y_base, z_base), (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = fk(z, th1, th2)
+
+    # update prismatic link
+    prism_line.set_data([x_base, x0], [y_base, y0])
+    prism_line.set_3d_properties([z_base, z0])
+
+    # update RR links
+    link_line.set_data([x0, x1, x2], [y0, y1, y2])
+    link_line.set_3d_properties([z0, z1, z2])
+
+    # update trace
+    x_history.append(x2)
+    y_history.append(y2)
+    z_history.append(z2)
+    trace.set_data(x_history, y_history)
+    trace.set_3d_properties(z_history)
+
+    # update info text
+    end_eff_text.set_text(
+        f"t = {times[frame_index]:.2f}\n"
+        f"z = {z:.2f}\nθ1 = {th1:.2f} rad\nθ2 = {th2:.2f} rad"
+    )
+
+    # highlight current line in text box
+    text_box.tag_remove("highlight", "1.0", tk.END)
+    line_number = f"{frame_index+1}.0"
+    text_box.tag_add("highlight", line_number, f"{line_number} lineend")
+    text_box.tag_config("highlight", background="yellow", foreground="black")
+    text_box.see(line_number)
+
+    frame_index += 1
+    return link_line, prism_line, trace, end_eff_text  # <<< CHANGED
+
+# ====== Run Trajectory ======
+def run_trajectory():
+    global ani, times, zs, theta1s, theta2s, x_history, y_history, z_history, frame_index, is_paused
+
+    raw_text = text_box.get("1.0", tk.END).strip()
+    if not raw_text:
+        messagebox.showwarning("Warning", "No data pasted!")
+        return
+
+    # Parse data: t, z, θ1, θ2
+    lines = raw_text.splitlines()
+    times, zs, theta1s, theta2s = [], [], [], []
+    for line in lines:
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 4:
+            try:
+                t = float(parts[0])
+                z = float(parts[1])
+                th1 = float(parts[2])
+                th2 = float(parts[3])
+                times.append(t)
+                zs.append(z)
+                theta1s.append(th1)
+                theta2s.append(th2)
+            except ValueError:
+                continue
+
+    if not theta1s:
+        messagebox.showerror("Error", "Invalid data format! Expect lines like: t,z,theta1,theta2")
+        return
+
+    # Reset state
+    x_history, y_history, z_history = [], [], []
+    frame_index = 0
+    is_paused = False
+    pause_btn.config(text="Pause")
+    text_box.tag_remove("highlight", "1.0", tk.END)
+
+    # Clear old animation
+    if ani:
+        ani.event_source.stop()
+
+    ani = animation.FuncAnimation(
+        fig, animate,
+        frames=len(theta1s),
+        interval=500,
+        blit=True,
+        repeat=True,
+        cache_frame_data=False
+    )
+    canvas.draw()
+
+# ====== Pause/Resume ======
+def toggle_pause():
+    global is_paused
+    is_paused = not is_paused
+    pause_btn.config(text="Resume" if is_paused else "Pause")
+
+# ====== Tkinter GUI ======
+root = tk.Tk()
+root.title("PRR Robot - Forward Kinematics Simulator (3D)")
+
+# Layout: left text box, right plot
+frame = tk.Frame(root)
+frame.pack(fill="both", expand=True)
+
+# Textbox for trajectory
+text_box = scrolledtext.ScrolledText(frame, width=30, height=20, wrap=tk.WORD)
+text_box.pack(side="left", fill="y", padx=5, pady=5)
+
+# Example trajectory: t, z, θ1, θ2
+example_text = "0,0.0,0.0,0.0\n1,1.0,0.5,0.2\n2,2.0,1.0,0.5\n3,1.5,1.2,-0.3"
+text_box.insert(tk.END, example_text)
+
+# Matplotlib 3D Figure
+fig = plt.figure(figsize=(6,6))
+ax = fig.add_subplot(111, projection='3d')
+ax.set_xlim(-10, 10)
+ax.set_ylim(-10, 10)
+ax.set_zlim(0, 10)
+ax.set_xlabel("X")
+ax.set_ylabel("Y")
+ax.set_zlabel("Z")
+ax.set_title("PRR Robot - FK Animation (3D)")
+
+# separate lines: prismatic link + RR links
+prism_line, = ax.plot([], [], [], 'o-', lw=4, color="blue")
+link_line, = ax.plot([], [], [], 'o-', lw=4, color="blue")    # RR links
+trace, = ax.plot([], [], [], 'r--', lw=1)                     # trajectory trace
+end_eff_text = ax.text2D(0.05, 0.95, '', transform=ax.transAxes, va="top")
+
+canvas = FigureCanvasTkAgg(fig, master=frame)
+canvas.get_tk_widget().pack(side="right", fill="both", expand=True)
+
+# Control buttons
+button_frame = tk.Frame(root)
+button_frame.pack(pady=5)
+
+run_btn = tk.Button(button_frame, text="Run Trajectory", command=run_trajectory)
+run_btn.pack(side="left", padx=5)
+
+pause_btn = tk.Button(button_frame, text="Pause", command=toggle_pause)
+pause_btn.pack(side="left", padx=5)
+
+root.mainloop()
