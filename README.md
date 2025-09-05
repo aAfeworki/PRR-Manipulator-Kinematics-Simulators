@@ -31,9 +31,9 @@ It includes both forward and inverse kinematics tools designed for learning, vis
 
 PRR-Manipulator-Kinematics-Simulators
      
-      forward_kinematics_slider.py
-      forward_kinematics_from_ik.py
-      inverse_kinematics.py
+      FK_Simulator_for_PRR_manipulator_with_Slider.py
+      FK_Simulator_for_PRR_Industrial_Robot.py
+      IK_Generator_for_PRR_manipulator_with_Simulator.py
       README.md
 
 
